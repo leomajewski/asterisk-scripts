@@ -100,3 +100,78 @@ Total Endpoints: 3 | Online: 2
 Overall Average Latency: 116ms
 ----------------------------------------------------------------------------------------------------
 ```
+
+---
+
+## capture_pjsip_traffic.sh
+
+Captures live SIP/RTP traffic for a single PJSIP endpoint or an entire named group, saving rotating `.pcap` files to disk. Designed for long-running captures (up to 7 days) without manual intervention.
+
+### How it works
+
+The script resolves endpoint IPs **at runtime** using `pjsip show endpoint`, rather than reading them from a static config. This ensures the capture follows the current registered contact, which is important in dynamic NAT environments where public IPs can change between registrations.
+
+For group captures, all endpoint IPs are deduplicated before building the tcpdump filter — multiple endpoints behind the same NAT gateway share one public IP, so capturing it once is enough to cover the whole group.
+
+The tcpdump process runs in the background. The foreground loop shows a live countdown and lists the generated files, and can be stopped at any time by pressing `S`.
+
+### Features
+
+- **Two modes:** single endpoint (numeric argument) or group (string argument)
+- **Live IP resolution** via `pjsip show endpoint` — no stale config IPs
+- **IP deduplication** for groups — avoids redundant capture filters
+- **Rotating files** — new `.pcap` every 24 hours (configurable), keeping individual files manageable
+- **7-day auto-stop** — safe to leave running unattended
+- **Press S to stop** — clean shutdown flushes and closes the current file
+
+### Requirements
+
+- `tcpdump` installed and executable by the script user
+- Asterisk with PJSIP (`chan_pjsip`)
+- Write permission to `OUTPUT_DIR`
+
+### Configuration
+
+```bash
+OUTPUT_DIR="/var/log/voip-captures"   # Where .pcap files are saved
+CONF_FILE="/etc/asterisk/pjsip.conf"  # PJSIP config (group lookups only)
+GROUP_FIELD="named_call_group"         # Field used to assign endpoints to groups
+ENDPOINT_PATTERN="^\[[0-9]\{4\}\]"    # Regex matching endpoint section headers
+MAX_DURATION=$((7 * 24 * 60 * 60))    # Auto-stop after 7 days
+ROTATE_INTERVAL=86400                  # New file every N seconds (default: 1 day)
+```
+
+### Usage
+
+```bash
+# Capture traffic for a single endpoint
+./capture_pjsip_traffic.sh 1001
+
+# Capture traffic for all endpoints in a group
+./capture_pjsip_traffic.sh branch-east
+```
+
+### Example Output
+
+```
+Looking up endpoints in group 'branch-east'...
+
+  Endpoints found: 3
+
+  Resolving registered IPs...
+  OK  endpoint 1001     -> 203.0.113.10
+  OK  endpoint 1002     -> 203.0.113.10
+  --  endpoint 1003     -> not registered (skipped)
+
+  Unique IPs to capture: 1
+    -> 203.0.113.10
+
+Capture started (new file every 24h, auto-stop after 7 days)
+Group: branch-east | IPs: 203.0.113.10 | Session: 20240601_143201
+Press [S] to stop early.
+----------------------------------------------------------------------
+Time remaining: 06 days 23h:59m:45s
+
+Files in this session:
+  /var/log/voip-captures/capture_branch-east_20240601_143201_20240601_143201.pcap  1.2M
+```
