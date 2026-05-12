@@ -1,6 +1,11 @@
 # asterisk-scripts
 
-Utility shell scripts for Asterisk PBX administration.
+Bash scripts for **Asterisk PBX troubleshooting and monitoring**. Covers PJSIP endpoint diagnostics, SIP latency testing, and VoIP traffic capture — all using Asterisk's native CLI, no external dependencies.
+
+| Script | Purpose |
+|---|---|
+| [`check_pjsip_group.sh`](#check_pjsip_groupsh) | Layer-7 SIP latency tester for PJSIP endpoint groups |
+| [`capture_pjsip_traffic.sh`](#capture_pjsip_trafficsh) | Long-running tcpdump capture filtered by PJSIP registered IPs |
 
 ---
 
