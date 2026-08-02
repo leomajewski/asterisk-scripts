@@ -1,15 +1,35 @@
+#                           ___________ _
+#                      __/   .::::.-'-(/-/)
+#                    _/:  .::::.-' .-'\/\_`,
+#                   /:  .::::./   -._-.  d\|
+#                    /: (""""/    '.  (__/||
+#                     \::).-'  -._  \/ \\/\|
+#             __ _ .-'`)/  '-'. . '. |  (i_O
+#         .-'      \       -'      '\|
+#    _ _./      .-'|       '.  (    \\
+# .-'   :      '_  \         '-'\  /|/
+#/      )\_      '- )_________.-|_/^\
+#(   .-'   )-._-:  /        \(/\'-._ `.
+# (   )  _//_/|:  /          `\()   `\_\
+#  ( (   \()^_/)_/             )/      \\
+#   )     \\ \(_)             //        )\
+#         _o\ \\\            (o_       |__\
+#         \ /  \\\__          )_\
+#               ^)__\
+
 #!/bin/bash
 
 # ==============================================================================
 # PJSIP GROUP LATENCY CHECKER - Asterisk Native
 #
-# Tests real Layer-7 SIP latency for all PJSIP endpoints belonging to a
-# named group, bypassing firewalls by using Asterisk's own SIP stack.
-# Collects N samples per endpoint and reports averaged RTT with quality
-# classification and online/offline status.
+# Tests real Layer-7 SIP latency for a single PJSIP endpoint, or for all
+# endpoints belonging to a named group, bypassing firewalls by using
+# Asterisk's own SIP stack. Collects N samples per endpoint and reports
+# averaged RTT with quality classification and online/offline status.
 #
 # Usage:
-#   ./check_pjsip_group.sh <GROUP_NAME>
+#   ./check_pjsip_group.sh <ENDPOINT_NUMBER>   test a single endpoint
+#   ./check_pjsip_group.sh <GROUP_NAME>        test all endpoints in a group
 #   ./check_pjsip_group.sh --help
 #
 # Requirements:
@@ -20,7 +40,7 @@
 export LC_NUMERIC="C"
 
 # ------------------------------------------------------------------------------
-# CONFIGURATION — adjust these to match your environment
+# CONFIGURATION - adjust these to match your environment
 # ------------------------------------------------------------------------------
 CONF_FILE="/etc/asterisk/pjsip.conf"   # PJSIP config file to discover groups
 GROUP_FIELD="named_call_group"          # Field that assigns endpoints to groups
@@ -40,11 +60,16 @@ NC='\033[0m'
 
 show_help() {
     echo -e "${YELLOW}PJSIP Group Latency Checker${NC}"
-    echo -e "Usage: $0 [OPTIONS] <GROUP_NAME>"
+    echo -e "Usage: $0 [OPTIONS] <ENDPOINT_NUMBER|GROUP_NAME>"
     echo ""
     echo -e "${CYAN}DESCRIPTION:${NC}"
-    echo "  Runs Layer-7 latency tests (via Asterisk pjsip qualify) against all"
-    echo "  endpoints in a named group. Collects $NUM_SAMPLES samples for averaged RTT."
+    echo "  Runs Layer-7 latency tests (via Asterisk pjsip qualify) against a single"
+    echo "  endpoint, or all endpoints in a named group. Collects $NUM_SAMPLES samples for"
+    echo "  averaged RTT."
+    echo ""
+    echo -e "${CYAN}EXAMPLES:${NC}"
+    echo "  $0 1001"
+    echo "  $0 branch-east"
     echo ""
     echo -e "${CYAN}OPTIONS:${NC}"
     echo "  -h, --help     Show this help and list available groups."
@@ -77,29 +102,39 @@ if [[ "$1" == "--help" ]] || [[ "$1" == "-h" ]]; then
 fi
 
 if [ -z "$1" ]; then
-    echo -e "${RED}Error: GROUP_NAME not specified.${NC}"
+    echo -e "${RED}Error: ENDPOINT_NUMBER or GROUP_NAME not specified.${NC}"
     echo "Use '$0 --help' to list available groups."
     exit 1
 fi
 
-GROUP=$1
+ARG=$1
 TEMP_DIR="/tmp/pjsip_check_$(date +%s)"
 mkdir -p "$TEMP_DIR"
 
-echo -e "${YELLOW}$(printf '%.0s-' {1..100})${NC}"
-echo -e "LATENCY REPORT (N=$NUM_SAMPLES samples) — Group: ${GREEN}$GROUP${NC}"
-echo -e "${YELLOW}$(printf '%.0s-' {1..100})${NC}"
+if [[ "$ARG" =~ ^[0-9]+$ ]]; then
+    # ── SINGLE ENDPOINT MODE ──────────────────────────────────────────────────
+    ENDPOINT_LIST="$ARG"
+    LABEL="Endpoint: $ARG"
+else
+    # ── GROUP MODE ────────────────────────────────────────────────────────────
+    GROUP=$ARG
+    LABEL="Group: $GROUP"
 
-# Discover endpoints belonging to the group:
-# Looks backwards up to 40 lines from the group= tag to find the [endpoint] header
-ENDPOINT_LIST=$(grep -B 40 "${GROUP_FIELD}=${GROUP}" "$CONF_FILE" | grep "$ENDPOINT_PATTERN" | tr -d '[]' | sort -u)
+    # Discover endpoints belonging to the group:
+    # Looks backwards up to 40 lines from the group= tag to find the [endpoint] header
+    ENDPOINT_LIST=$(grep -B 40 "${GROUP_FIELD}=${GROUP}" "$CONF_FILE" | grep "$ENDPOINT_PATTERN" | tr -d '[]' | sort -u)
 
-if [ -z "$ENDPOINT_LIST" ]; then
-    echo -e "${RED}ERROR: Group '$GROUP' not found or has no endpoints.${NC}"
-    echo "Tip: Use '$0 --help' to see exact group names."
-    rm -rf "$TEMP_DIR"
-    exit 1
+    if [ -z "$ENDPOINT_LIST" ]; then
+        echo -e "${RED}ERROR: Group '$GROUP' not found or has no endpoints.${NC}"
+        echo "Tip: Use '$0 --help' to see exact group names."
+        rm -rf "$TEMP_DIR"
+        exit 1
+    fi
 fi
+
+echo -e "${YELLOW}$(printf '%.0s-' {1..100})${NC}"
+echo -e "LATENCY REPORT (N=$NUM_SAMPLES samples) - ${GREEN}$LABEL${NC}"
+echo -e "${YELLOW}$(printf '%.0s-' {1..100})${NC}"
 
 # --- PER-ENDPOINT TEST FUNCTION (runs in background) ---
 test_endpoint() {
